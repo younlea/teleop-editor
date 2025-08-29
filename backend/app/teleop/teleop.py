@@ -12,11 +12,11 @@ from app.robot.common import Settings
 class TeleopManager:
 
     QUEST_LPF = 0.98
-    MASTER_ARM_TORQUE_GAIN = 0.5
+    MASTER_ARM_TORQUE_GAIN = 0.6
     COLLISION_THRESHOLD = 0.00
 
     # LIMITS
-    LINEAR_VECLOITY_LIMIT = 4.0  # m/s
+    LINEAR_VELOCITY_LIMIT = 4.0  # m/s
     ANGULAR_VELOCITY_LIMIT = 12  # rad/s
     ACCELERATION_LIMIT_SCALING = 0.3  #
     DEFAULT_LINEAR_ACCELERATION = 10.0
@@ -48,11 +48,13 @@ class TeleopManager:
 
     def start(self, control_mode: str = "position"):
         if self.running:
-            return
+            raise RuntimeError("텔레오퍼레이션이 이미 실행 중입니다.")
         if not (ROBOT.connected and ROBOT.ready):
-            raise RuntimeError("Robot not ready")
+            raise RuntimeError("마스터암이 준비되어있지 않습니다.")
         if not MASTER.connected:
-            raise RuntimeError("Master not connected")
+            raise RuntimeError("마스터암이 연결되어 있지 않습니다.")
+        if not MASTER.running:
+            raise RuntimeError("마스터암이 이미 실행 중 입니다.")
 
         self.position_mode = control_mode == "position"
         self.right_q = None
@@ -102,7 +104,7 @@ class TeleopManager:
                     "base",
                     "link_torso_5",
                     torso_pose,
-                    self.LINEAR_VECLOITY_LIMIT,
+                    self.LINEAR_VELOCITY_LIMIT,
                     self.ANGULAR_VELOCITY_LIMIT,
                     self.ACCELERATION_LIMIT_SCALING,
                 )
@@ -129,7 +131,7 @@ class TeleopManager:
                     "base",
                     "link_torso_5",
                     torso_pose,
-                    self.LINEAR_VECLOITY_LIMIT,
+                    self.LINEAR_VELOCITY_LIMIT,
                     self.ANGULAR_VELOCITY_LIMIT,
                     self.DEFAULT_LINEAR_ACCELERATION * self.ACCELERATION_LIMIT_SCALING,
                     self.DEFAULT_ANGULAR_ACCELERATION * self.ACCELERATION_LIMIT_SCALING,
@@ -212,12 +214,10 @@ class TeleopManager:
             # assist torque (copied from your script)
             ma_q_limit_barrier = 0.5
             ma_min_q = np.deg2rad(
-                [-360, -30, 0, -135, -90, 35, -360, 
-                 -360, 10, -90, -135, -90, 35, -360]
+                [-360, -30, 0, -135, -90, 35, -360, -360, 10, -90, -135, -90, 35, -360]
             )
             ma_max_q = np.deg2rad(
-                [360, -10, 90, -60, 90, 80, 360, 
-                 360, 30, 0, -60, 90, 80, 360]
+                [360, -10, 90, -60, 90, 80, 360, 360, 30, 0, -60, 90, 80, 360]
             )
             ma_torque_limit = np.array([3.5, 3.5, 3.5, 1.5, 1.5, 1.5, 1.5] * 2)
             ma_viscous_gain = np.array([0.02, 0.02, 0.02, 0.02, 0.01, 0.01, 0.002] * 2)
@@ -281,8 +281,13 @@ class TeleopManager:
                 if self.quest_head_quat is None:
                     self.quest_head_quat = hq
 
-                self.quest_head_position = self.QUEST_LPF * self.quest_head_position + (1 - self.QUEST_LPF) * hp
-                self.quest_head_quat = self.QUEST_LPF * self.quest_head_quat + (1 - self.QUEST_LPF) * hq
+                self.quest_head_position = (
+                    self.QUEST_LPF * self.quest_head_position
+                    + (1 - self.QUEST_LPF) * hp
+                )
+                self.quest_head_quat = (
+                    self.QUEST_LPF * self.quest_head_quat + (1 - self.QUEST_LPF) * hq
+                )
                 T_conv = np.array(
                     [
                         [0, -1, 0, 0],
@@ -326,7 +331,7 @@ class TeleopManager:
                                 "base",
                                 "link_torso_5",
                                 self.torso_last_pose,
-                                self.LINEAR_VECLOITY_LIMIT,  # TODO 튜닝 필요합니다.
+                                self.LINEAR_VELOCITY_LIMIT,  # TODO 튜닝 필요합니다.
                                 self.ANGULAR_VELOCITY_LIMIT,  # TODO 튜닝 필요합니다.
                                 self.ACCELERATION_LIMIT_SCALING,  # TODO 튜닝 필요합니다.
                             )
@@ -357,7 +362,7 @@ class TeleopManager:
                                 "base",
                                 "link_torso_5",
                                 self.torso_last_pose,
-                                self.LINEAR_VECLOITY_LIMIT,  # TODO 튜닝 필요합니다.
+                                self.LINEAR_VELOCITY_LIMIT,  # TODO 튜닝 필요합니다.
                                 self.ANGULAR_VELOCITY_LIMIT,  # TODO 튜닝 필요합니다.
                                 self.DEFAULT_LINEAR_ACCELERATION
                                 * self.ACCELERATION_LIMIT_SCALING,  # TODO 튜닝 필요합니다.
