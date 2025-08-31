@@ -1,4 +1,5 @@
 import logging
+from app.logging_config import setup_logger
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,7 +19,8 @@ from app.routers import (
 from app.routers import project as project_router
 from app.services.quest_service import quest_service
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+setup_logger()
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -41,7 +43,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         # 로그 남기기
-        logging.error(f"Unhandled exception: {exc}")
+        logger.error(f"Unhandled exception: {exc}")
         traceback.print_exc()
 
         # HTTPException은 그대로 전달

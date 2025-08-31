@@ -1,5 +1,6 @@
 # backend/app/robot/robot.py
 import time
+import bisect
 import threading
 from typing import Optional, Dict, Any, Union, Tuple, Callable, List
 
@@ -73,6 +74,28 @@ class RobotManager:
         self._play_thread: Optional[threading.Thread] = None
         self._play_marker_ms: float = 0.0
 
+        # ---- Time-warp (timescale) ----
+        # editable keypoints: [(t_ms, scale)]
+        self._warp_enabled: bool = True
+        self._warp_points: list[tuple[float, float]] = [(0.0, 1.0)]
+        # precompiled piecewise-linear cache
+        self._wp_t: list[float] = []  # knot times
+        self._wp_s: list[float] = []  # knot scales
+        self._wp_a: list[float] = []  # per-segment slope a (s(t)=a t + b)
+        self._wp_b: list[float] = []  # per-segment intercept b
+        self._wp_M: list[float] = []  # prefix integral master(t_i)
+
+        # ---- Playhead clocks (timeline vs master) ----
+        self._play_tl_marker_ms: float = (
+            0.0  # current timeline position (for UI/report)
+        )
+        self._play_master_ms: float = 0.0  # current master (source) time
+        self._play_master_offset_ms: float = 0.0  # master at play start (seek base)
+        self._play_start_wall: float = 0.0  # wallclock at play start
+
+        # build initial warp cache
+        self._rebuild_warp_cache()
+
         # Injected timeline evaluators
         self._eval_range: Optional[RobotManager.EvalRangeFn] = None
         self._eval_at: Optional[RobotManager.EvalAtFn] = None  # optional
@@ -109,9 +132,11 @@ class RobotManager:
 
         def state_cb(state: rby.RobotState_A, cm_state: rby.ControlManagerState):
             self._initialized = True
-        
+
             if cm_state.state == rby.ControlManagerState.State.Enabled:
-                self.robot_q = np.where(state.is_ready, state.target_position, state.position).copy()
+                self.robot_q = np.where(
+                    state.is_ready, state.target_position, state.position
+                ).copy()
             else:
                 self.robot_q = state.position.copy()
 
@@ -161,15 +186,15 @@ class RobotManager:
                     self.power_all_on = False
 
         self.robot.start_state_update(state_cb, 1 / Settings.master_arm_loop_period)
-        
+
         CONNECTION_CHECK_ITERATION = 10
         for _ in range(CONNECTION_CHECK_ITERATION):
             if self._initialized:
                 return True
             time.sleep(0.1)
-        
+
         self.robot.stop_state_update()
-        
+
         return False
 
     def ensure_power_and_tools(self, timeout_s: float = 5.0) -> bool:
@@ -515,6 +540,109 @@ class RobotManager:
         self._eval_range = eval_range
         self._eval_at = eval_at
 
+    # -------------------------
+    # Timescale (warp) config & mapping
+    # -------------------------
+    def set_timescale_enabled(self, enabled: bool) -> None:
+        self._warp_enabled = bool(enabled)
+        self._rebuild_warp_cache()
+
+    def set_timescale_points(self, points: list[tuple[float, float]]) -> None:
+        pts: list[tuple[float, float]] = []
+        for t, s in points:
+            tt = float(max(0.0, t))
+            ss = float(max(0.05, min(4.0, s)))
+            pts.append((tt, ss))
+        if not pts:
+            pts = [(0.0, 1.0)]
+        pts.sort(key=lambda x: x[0])
+        merged: list[tuple[float, float]] = []
+        for t, s in pts:
+            if merged and abs(merged[-1][0] - t) < 1e-9:
+                merged[-1] = (t, s)
+            else:
+                merged.append((t, s))
+        self._warp_points = merged
+        self._rebuild_warp_cache()
+
+    def _rebuild_warp_cache(self) -> None:
+        """Precompute per-segment (a,b) and prefix integrals M(t_i)."""
+        pts = self._warp_points if self._warp_enabled else [(0.0, 1.0)]
+        n = len(pts)
+        self._wp_t = [p[0] for p in pts] if n else [0.0]
+        self._wp_s = [p[1] for p in pts] if n else [1.0]
+        self._wp_a = []
+        self._wp_b = []
+        self._wp_M = [0.0] * (n if n else 1)
+        if n <= 1:
+            return
+        # if first knot t0>0, treat [0,t0) as constant s0
+        if self._wp_t[0] > 0.0:
+            self._wp_M[0] = self._wp_s[0] * self._wp_t[0]
+        for i in range(n - 1):
+            t0, s0 = self._wp_t[i], self._wp_s[i]
+            t1, s1 = self._wp_t[i + 1], self._wp_s[i + 1]
+            a = (s1 - s0) / (t1 - t0) if t1 != t0 else 0.0
+            b = s0 - a * t0
+            self._wp_a.append(a)
+            self._wp_b.append(b)
+            seg = 0.5 * a * (t1 * t1 - t0 * t0) + b * (t1 - t0)
+            self._wp_M[i + 1] = self._wp_M[i] + seg
+
+    def _tl_to_master(self, tl_ms: float) -> float:
+        """master(tl) using prefix integral cache. O(log N)."""
+        t = float(max(0.0, tl_ms))
+        T, S, A, B, M = self._wp_t, self._wp_s, self._wp_a, self._wp_b, self._wp_M
+        n = len(T)
+        if n == 0:
+            return t
+        if t <= T[0]:
+            return S[0] * t
+        i = bisect.bisect_right(T, t) - 1
+        acc = M[i]
+        if i == n - 1:
+            acc += S[-1] * (t - T[-1])
+            return acc
+        t0 = T[i]
+        a = A[i]
+        b = B[i]
+        acc += 0.5 * a * (t * t - t0 * t0) + b * (t - t0)
+        return acc
+
+    def _master_to_tl(self, master_ms: float) -> float:
+        """Inverse mapping: find tl for given master using per-segment closed form. O(log N)."""
+        y = float(max(0.0, master_ms))
+        T, S, A, B, M = self._wp_t, self._wp_s, self._wp_a, self._wp_b, self._wp_M
+        n = len(T)
+        if n == 0:
+            return y
+        if y <= M[0]:
+            s0 = S[0] if S[0] != 0 else 1e-9
+            return y / s0
+        j = bisect.bisect_right(M, y) - 1
+        base_y = M[j]
+        if j == n - 1:
+            s = S[-1] if S[-1] != 0 else 1e-9
+            return T[-1] + (y - base_y) / s
+        t0, t1 = T[j], T[j + 1]
+        a, b = A[j], B[j]
+        dy = y - base_y
+        if abs(a) < 1e-12:
+            s = S[j] if S[j] != 0 else 1e-9
+            t = t0 + dy / s
+            return min(max(t, t0), t1)
+        # solve 0.5 a (t^2 - t0^2) + b (t - t0) = dy
+        A2 = 0.5 * a
+        B2 = b
+        C2 = -(0.5 * a * t0 * t0 + b * t0) - dy
+        disc = B2 * B2 - 4 * A2 * C2
+        disc = max(disc, 0.0)
+        sqrtD = disc**0.5
+        r1 = (-B2 + sqrtD) / (2 * A2)
+        r2 = (-B2 - sqrtD) / (2 * A2)
+        t = r1 if (t0 - 1e-6) <= r1 <= (t1 + 1e-6) else r2
+        return min(max(t, t0), t1)
+
     def can_play(self) -> Tuple[bool, str]:
         if not self.connected:
             return False, "Robot not connected"
@@ -537,10 +665,15 @@ class RobotManager:
             return False
 
         try:
-            # Fetch the exact starting pose using eval_range
+            # initialize clocks at seek point
+            self._play_tl_marker_ms = float(t0_ms)
+            self._play_master_offset_ms = self._tl_to_master(self._play_tl_marker_ms)
+            self._play_master_ms = self._play_master_offset_ms
+
+            # Fetch the exact starting pose **at master time**
             samples = self._eval_range(
-                float(t0_ms), float(t0_ms), 1.0
-            )  # step doesn't matter for single sample
+                float(self._play_master_ms), float(self._play_master_ms), 1.0
+            )
             if not samples:
                 return False
             q_start = np.asarray(samples[0], dtype=float)
@@ -567,6 +700,7 @@ class RobotManager:
                 return True  # idempotent
             self._play_stop.clear()
             self._play_marker_ms = float(t0_ms)
+            self._play_start_wall = time.time()
             self._play_thread = threading.Thread(target=self._run_play, daemon=True)
             self.playing = True
             self._play_thread.start()
@@ -578,7 +712,15 @@ class RobotManager:
                 if self.playing:
                     return False
 
-                self._play_marker_ms = max(0.0, float(marker_ms))
+                # self._play_marker_ms = max(0.0, float(marker_ms))
+
+                # timeline seek; synchronize master offset as well
+                self._play_tl_marker_ms = max(0.0, float(marker_ms))
+                self._play_master_offset_ms = self._tl_to_master(
+                    self._play_tl_marker_ms
+                )
+                self._play_master_ms = self._play_master_offset_ms
+                self._play_marker_ms = self._play_tl_marker_ms  # compat
             return True
         except Exception:
             return False
@@ -600,7 +742,10 @@ class RobotManager:
     def play_state(self) -> dict:
         return {
             "playing": self.playing,
-            "marker_ms": int(self._play_marker_ms),
+            # expose master (source) time as canonical marker,
+            # and also provide timeline time for UI if needed
+            "marker_ms": int(self._play_master_ms),
+            "timeline_ms": int(self._play_tl_marker_ms),
             "teleop_active": self.teleop_active,
             "connected": self.connected,
             "ready": self.ready,
@@ -614,11 +759,7 @@ class RobotManager:
           else sample a short horizon via eval_range and consume the first.
         """
         period_s = float(Settings.master_arm_loop_period)
-        period_ms = period_s * 1000.0
-
-        # establish a stable schedule
-        start_wall = time.time()
-        k = 0  # tick index
+        k = 0
         try:
             self.create_stream()  # optional
         except Exception:
@@ -626,14 +767,17 @@ class RobotManager:
 
         try:
             while not self._play_stop.is_set():
-                t_ms = self._play_marker_ms + period_ms
+                # elapsed real time since play start
+                elapsed_ms = (time.time() - self._play_start_wall) * 1000.0
+                master_now = self._play_master_offset_ms + elapsed_ms
 
                 q = None
                 try:
                     if self._eval_at is not None:
-                        q = self._eval_at(float(t_ms))
+                        q = self._eval_at(float(master_now))
                     else:
-                        block = self._eval_range(float(t_ms), float(t_ms), period_ms)
+                        block = self._eval_range(float(master_now), float(master_now),
+                                                 float(period_s * 1000.0))
                         if block:
                             q = np.asarray(block[0], dtype=float)
                 except Exception:
@@ -650,7 +794,7 @@ class RobotManager:
                             q, min_time_s=period_s * 1.01
                         )
                         self.stream.send_command(cmd)
-                        
+
                         # Gripper
                         if GRIPPER.connected:
                             gripper_q = np.clip(q[0:2], [0.0, 0.0], [1.0, 1.0])
@@ -659,12 +803,13 @@ class RobotManager:
                         self._play_stop.set()
                         break
 
-                # advance marker & wait until next tick
-                self._play_marker_ms = t_ms
+                # publish clocks for UI/state
+                self._play_master_ms = master_now
+                self._play_tl_marker_ms = self._master_to_tl(master_now)
                 k += 1
 
                 # sleep to maintain loop period
-                next_time = start_wall + k * period_s
+                next_time = self._play_start_wall + k * period_s
                 now = time.time()
                 delay = next_time - now
                 if delay > 0:

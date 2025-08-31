@@ -68,10 +68,12 @@ export type ProjectState = {
 
   // Playback/state polling
   _playPollTimer: number | null
-  _srv_marker_ms: number
+  _srv_marker_ms: number         // ← UI에서 사용할 "타임라인 ms"
+  _srv_master_ms?: number        // (옵션) 서버 master ms
   _srv_poll_at_ms: number
 
   _undo: any[]
+  timescale: { enabled: boolean, points: Array<{ t_ms: number, scale: number }> }
 }
 
 export const useProjectStore = defineStore('project', {
@@ -124,10 +126,12 @@ export const useProjectStore = defineStore('project', {
     statusInFlight: false,
 
     _playPollTimer: null,
-    _srv_marker_ms: 0,
+    _srv_marker_ms: 0,      // timeline_ms로 채움
+    _srv_master_ms: 0,
     _srv_poll_at_ms: 0,
 
     _undo: [],
+    timescale: { enabled: true, points: [{ t_ms: 0, scale: 1 }] },
   }),
 
   getters: {
@@ -143,6 +147,7 @@ export const useProjectStore = defineStore('project', {
       const now = (typeof performance !== 'undefined') ? performance.now() : Date.now()
       if (state.player.playing) {
         const elapsed = Math.max(0, now - state._srv_poll_at_ms)
+        // 서버가 제공하는 것은 timeline_ms이므로, 폴링 간격 동안 선형 예측만 추가
         return Math.max(0, Math.round(state._srv_marker_ms + elapsed))
       }
       return Math.max(0, Math.round(state.player.t_ms))
@@ -277,7 +282,7 @@ export const useProjectStore = defineStore('project', {
 
       try {
         await api.quest.connect({
-         local_ip: local_ip || "",
+          local_ip: local_ip || "",
           quest_ip: quest_ip || "",
           ...(local_port_str ? { local_port: Number(local_port_str) } : {}),
           ...(quest_port_str ? { quest_port: Number(quest_port_str) } : {}),
@@ -589,7 +594,11 @@ export const useProjectStore = defineStore('project', {
         try {
           const s = await api.play.state()
           this.player.playing = !!(s as any).playing
-          this._srv_marker_ms = Number((s as any).marker_ms || 0)
+          // 백엔드는 marker_ms(master) + timeline_ms 제공
+          const timeline_ms = Number((s as any).timeline_ms ?? (s as any).marker_ms ?? 0)
+          const master_ms = Number((s as any).marker_ms ?? 0)
+          this._srv_marker_ms = timeline_ms
+          this._srv_master_ms = master_ms
           this._srv_poll_at_ms = (typeof performance !== 'undefined') ? performance.now() : Date.now()
           // 일시정지/정지 상태에서는 백엔드 위치를 로컬로 채택
           if (!this.player.playing) this.player.t_ms = this._srv_marker_ms
@@ -631,7 +640,7 @@ export const useProjectStore = defineStore('project', {
       try {
         const s = await api.play.state()
         this.player.playing = false
-        this.player.t_ms = Number((s as any).marker_ms || 0)
+        this.player.t_ms = Number((s as any).timeline_ms ?? (s as any).marker_ms ?? 0)
       } catch {
         this.player.playing = false
       }
@@ -642,6 +651,19 @@ export const useProjectStore = defineStore('project', {
       this.player.playing = false
       this.player.t_ms = 0
       await this.seek(0)
+    },
+
+    /* ---------- Timescale ---------- */
+    async setTimescaleEnabled(enabled: boolean) {
+      this.timescale.enabled = !!enabled
+      await api.play.setTimescale({ enabled: this.timescale.enabled, points: this.timescale.points })
+    },
+    async setTimescalePoints(points: Array<{ t_ms: number, scale: number }>) {
+      // 정렬/정상화는 서버에서도 처리하지만, 프런트에서도 살짝 정리
+      const norm = (points ?? []).map(p => ({ t_ms: Math.max(0, Number(p.t_ms) || 0), scale: Number(p.scale) || 1 }))
+        .sort((a, b) => a.t_ms - b.t_ms)
+      this.timescale.points = norm.length ? norm : [{ t_ms: 0, scale: 1 }]
+      await api.play.setTimescale({ enabled: this.timescale.enabled, points: this.timescale.points })
     },
   }
 })

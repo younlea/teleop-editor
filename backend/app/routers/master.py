@@ -10,9 +10,7 @@ Vec14 = Annotated[list[float], Field(min_length=14, max_length=14)]
 
 class MoveReq(BaseModel):
     q: Vec14
-    max_duration: float = Field(8.0, ge=0.5, le=120.0)
-    block: bool = True
-    # 필요 시 제한값 오버라이드 (없으면 None)
+    minimum_duration: float = Field(5.0, ge=0.5, le=120.0)
     max_vel: Optional[Vec14] = None
     max_acc: Optional[Vec14] = None
     max_jerk: Optional[Vec14] = None
@@ -43,8 +41,7 @@ def move_to(req: MoveReq):
     try:
         ok_or_started = MASTER.move_to_joints(
             req.q,
-            max_duration=req.max_duration,
-            block=req.block,
+            minimum_duration=req.minimum_duration,
             max_vel=req.max_vel,
             max_acc=req.max_acc,
             max_jerk=req.max_jerk,

@@ -36,6 +36,7 @@ async function request<T = any>(path: string, init?: RequestInit): Promise<T> {
     try {
         res = await fetch(url, init)
     } catch (e: any) {
+        console.error(e)
         notifyError('Network error', e?.message || 'Failed to reach server')
         throw e
     }
@@ -130,10 +131,24 @@ export const api = {
 
     /** Play */
     play: {
-        state: () => request('/play/state'),                                        // 200 JSON
-        start: (t0_ms: number) => postJson('/play/start', { t0_ms }),               // 204
-        stop: () => postJson('/play/stop'),                                         // 204
-        seek: (marker_ms: number) => postJson('/play/seek', { marker_ms }),         // 204
+        async start(t0_ms: number) {
+            return postJson('/play/start', { t0_ms })
+        },
+        async stop() {
+            return postJson('/play/stop')
+        },
+        async seek(marker_ms: number) {
+            return postJson('/play/seek', { marker_ms })
+        },
+        async state() {
+            return request('/play/state')
+        },
+        async setTimescale(payload: { enabled: boolean, points: Array<{ t_ms: number, scale: number }> }) {
+            return postJson('/play/timescale', { payload })
+        },
+        async getTimescale() {
+            return request('/play/timescale')
+        },
     },
 
     /** Record */

@@ -1,4 +1,5 @@
 # backend/app/robot/master_arm.py
+import logging
 import os, time
 from typing import Optional, Dict, Any, Callable, List
 import rby1_sdk as rby
@@ -8,9 +9,12 @@ from .common import Settings
 from ruckig import Ruckig, InputParameter, OutputParameter, Result
 
 
+logger = logging.getLogger(__name__)
+
+
 class MasterArmManager:
     """
-    RBY Master Arm wrapper (connect + start/stop control).
+    RBY Master Arm wrapper.
     The actual control callback is provided by teleop.
     """
 
@@ -19,9 +23,13 @@ class MasterArmManager:
     def __init__(self) -> None:
         self.device = rby.upc.MasterArmDeviceName
         self.master: Optional[rby.upc.MasterArm] = None
-        self.connected = False
-        self.running = False
-        self.zero_torque = False
+        self.connected: bool = False
+        self.running: bool = False
+        self.keep_last_command: bool = False
+        self.last_command: Optional[rby.upc.MasterArm.ControlInput] = None
+        self._stop_evt = threading.Event()
+        self._done_evt = threading.Event()
+        self._lock = threading.Lock()
 
         self.dt = Settings.master_arm_loop_period  # 제어 주기
 
@@ -31,69 +39,133 @@ class MasterArmManager:
         self.q_max_jerk = np.deg2rad(np.full(self.DOF, 2000.0))
 
         # 포지션 운용 모드 & 토크 리밋(teleop 예시와 동일)
-        self.dxl_mode_pos = rby.DynamixelBus.CurrentBasedPositionControlMode
         self.ma_torque_limit = np.array(
             [3.5, 3.5, 3.5, 1.5, 1.5, 1.5, 1.5] * 2, dtype=float
         )
 
         # 모션 제어
-        self._stop_evt = threading.Event()
-        self._done_evt = threading.Event()
-        self._ok = False
+        self._reached = True
         self._last_qd = [0.0] * self.DOF
-
         self._target_q = [0.0] * self.DOF
         self._move_start = 0.0
-        self._max_duration = 0.0
 
     def connect(self) -> bool:
-        print(self.device)
-        rby.upc.initialize_device(self.device)
-        model_path = f"{os.path.dirname(os.path.realpath(__file__))}/master_arm.urdf"
-        self.master = rby.upc.MasterArm(self.device)
-        self.master.set_model_path(model_path)
-        self.master.set_control_period(Settings.master_arm_loop_period)
-        active = self.master.initialize(verbose=True)
-        ok = len(active) == rby.upc.MasterArm.DeviceCount
-        self.connected = bool(ok)
+        logger.info(f"Connecting to Master Arm on {self.device}...")
+
+        try:
+            rby.upc.initialize_device(self.device)
+        except Exception as e:
+            logger.error(f"Error initializing device {self.device}: {e}")
+            return False
+
+        try:
+            model_path = f"{os.path.dirname(os.path.realpath(__file__))}/master_arm.urdf"
+            self.master = rby.upc.MasterArm(self.device)
+            self.master.set_model_path(model_path)
+            self.master.set_control_period(self.dt)
+            active = self.master.initialize(verbose=True)
+            ok = len(active) == rby.upc.MasterArm.DeviceCount
+            self.connected = bool(ok)
+        except Exception as e:
+            logger.error(f"Error connecting to Master Arm: {e}")
+            return False
+        
         return self.connected
 
     def disconnect(self):
-        self.stop_control()
+        if not self.connected:
+            logger.debug("Master Arm is not connected. No need to disconnect.")
+            return
+        
+        logger.info("Disconnecting Master Arm...")
+
+        try:
+            self.stop_control()
+        except Exception as e:
+            logger.error(f"Error stopping Master Arm control: {e}")
+            self.running = False
+
+        self.master = None
         self.connected = False
 
     def start_control(
-        self, cb: Callable[[rby.upc.MasterArm.State], rby.upc.MasterArm.ControlInput]
+        self,
+        cb: Callable[[rby.upc.MasterArm.State], rby.upc.MasterArm.ControlInput],
+        keep_last_command: bool = False,
     ):
         if not self.connected:
-            raise RuntimeError("Master not connected")
+            raise RuntimeError(
+                "Failed to start Master Arm control: Master is not connected"
+            )
+
         if self.running:
-            return
-        self.zero_torque = False
-        self.master.start_control(cb)
+            msg = "Failed to start Master Arm control: Control is already running."
+            logger.error(msg)
+            raise RuntimeError(msg)
+
+        logger.info(f"Starting Master Arm control({keep_last_command=})...")
+
+        # --- 제어 준비 ---
+        self._stop_evt.clear()
+        self._done_evt.clear()
+        self.keep_last_command = keep_last_command
+
+        def ctrl_cb(state: rby.upc.MasterArm.State) -> rby.upc.MasterArm.ControlInput:
+            i = rby.upc.MasterArm.ControlInput()
+            if self._stop_evt.is_set():
+                self._done_evt.set()
+                if self.keep_last_command:
+                    if self.last_command is None:
+                        i.target_operating_mode.fill(
+                            rby.DynamixelBus.CurrentBasedPositionControlMode
+                        )
+                        i.target_position = state.q_joint
+                        i.target_torque = self.ma_torque_limit
+                    else:
+                        i = self.last_command
+                else:
+                    i.target_operating_mode.fill(rby.DynamixelBus.CurrentControlMode)
+                    i.target_position = state.q_joint
+                    i.target_torque.fill(0.0)
+            else:
+                i = cb(state)
+
+            self.last_command = i
+
+            return i
+
+        self.master.start_control(ctrl_cb)
         self.running = True
 
     def stop_control(self):
-        if not self.running:
-            return
-        try:
-            self.zero_torque = True
-            time.sleep(Settings.master_arm_loop_period * 2)
+        logger.info("Stopping Master Arm control...")
 
+        if not self.running:
+            logger.debug(
+                "Master Arm control is not running. No need to stop."
+            )
+            return
+
+        try:
+            self._stop_evt.set()
+            if not self._done_evt.wait(timeout=5.0):
+                logger.error("Master Arm control did not stop in time.")
+            time.sleep(self.dt * 2)
             self.master.stop_control()
+        except Exception as e:
+            logger.error(f"Error while stopping Master Arm control: {e}")
         finally:
             self.running = False
 
     def move_to_joints(
         self,
         q_target: List[float],
-        max_duration: float = 8.0,
-        block: bool = True,
+        minimum_duration: float = 5.0,
         max_vel: Optional[List[float]] = None,
         max_acc: Optional[List[float]] = None,
         max_jerk: Optional[List[float]] = None,
     ) -> bool:
-        """Ruckig 오픈루프 플래닝 → 매 주기 target_position만 전송."""
+
         if not self.connected:
             raise RuntimeError("Master not connected")
         if len(q_target) != self.DOF:
@@ -102,12 +174,6 @@ class MasterArmManager:
             raise RuntimeError(
                 "Already running. Stop first or integrate with your teleop multiplexer."
             )
-
-        # 이벤트 초기화
-        self._stop_evt.clear()
-        self._done_evt.clear()
-        self._ok = False
-        self._last_qd = list(q_target)
 
         q_target = np.asarray(q_target, dtype=float)
         vmax = (
@@ -122,9 +188,11 @@ class MasterArmManager:
             else self.q_max_jerk
         )
 
-        self._target_q = list(q_target)
-        self._move_start = time.time()
-        self._max_duration = float(max_duration)
+        with self._lock:
+            self._last_qd = list(q_target)
+            self._reached = False
+            self._target_q = list(q_target)
+            self._move_start = time.time()
 
         # Ruckig 준비
         otg = Ruckig(self.DOF, self.dt)
@@ -136,24 +204,24 @@ class MasterArmManager:
         inp.max_velocity = vmax.tolist()
         inp.max_acceleration = amax.tolist()
         inp.max_jerk = jmax.tolist()
+        inp.minimum_duration = minimum_duration
 
-        start_time = time.time()
         initialized = False
 
         def cb(state: rby.upc.MasterArm.State) -> rby.upc.MasterArm.ControlInput:
             nonlocal initialized
 
             cin = rby.upc.MasterArm.ControlInput()
-            cin.target_operating_mode[0:14].fill(self.dxl_mode_pos)
-            cin.target_torque[0:14] = self.ma_torque_limit
+            cin.target_operating_mode.fill(
+                rby.DynamixelBus.CurrentBasedPositionControlMode
+            )
+            cin.target_torque = self.ma_torque_limit
 
-            # 외부 종료 또는 타임아웃
-            if self._stop_evt.is_set() or (time.time() - start_time > max_duration):
-                cin.target_position[0:14] = self._last_qd
-                self._done_evt.set()
-                return cin
+            with self._lock:
+                if self._reached:
+                    cin.target_position = self._last_qd
+                    return cin
 
-            # 첫 주기만 실측으로 초기화
             if not initialized:
                 q0 = np.asarray(state.q_joint, dtype=float)
                 dq0 = np.asarray(state.qvel_joint, dtype=float)
@@ -161,64 +229,42 @@ class MasterArmManager:
                 inp.current_velocity = dq0.tolist()
                 inp.current_acceleration = [0.0] * self.DOF
 
-            # 오픈루프 업데이트
             res = otg.update(inp, out)
             q_d = np.array(out.new_position, dtype=float)
-            self._last_qd = q_d.tolist()
+            with self._lock:
+                self._last_qd = q_d.tolist()
+                cin.target_position = self._last_qd
 
-            # 포지션 명령
-            cin.target_position[0:14] = self._last_qd
-
-            # 다음 주기 입력으로 전달(오픈루프 재생의 핵심)
             out.pass_to_input(inp)
             initialized = True
 
             if res == Result.Finished:
-                self._ok = True
-                self._done_evt.set()
+                with self._lock:
+                    self._reached = True
 
             return cin
 
-        # 제어 시작
-        self.start_control(cb)
+        self.start_control(cb, keep_last_command=True)
 
-        def waiter():
-            self._done_evt.wait()
-            time.sleep(self.dt * 2)  # 살짝 홀드
-            self.stop_control()
-
-        if block:
-            waiter()
-            return self._ok
-        else:
-            threading.Thread(target=waiter, daemon=True).start()
-            return True
-
-    def stop_move(self, ok: bool = False) -> bool:
-        """외부에서 현재 이동을 종료. ok=True면 '성공'으로 표시."""
-        if not self.running or self._done_evt.is_set():
-            return False
-        self._ok = bool(ok)
-        self._stop_evt.set()
         return True
 
     def state(self) -> Dict[str, Any]:
-        moving = self.running and not self._done_evt.is_set()
-        elapsed = (time.time() - self._move_start) if self._move_start > 0 else 0.0
-        return {
-            "device": self.device,
-            "connected": self.connected,
-            "running": self.running,
-            "moving": moving,
-            "move": {
-                "active": moving,
-                "ok": (self._ok if self._done_evt.is_set() else None),
-                "target_q": self._target_q,
-                "last_qd": self._last_qd,
-                "elapsed": elapsed,
-                "max_duration": self._max_duration,
-            },
-        }
+        with self._lock:
+            moving = self.running and not self._reached
+            elapsed = (time.time() - self._move_start) if self._move_start > 0 else 0.0
+            return {
+                "device": self.device,
+                "connected": self.connected,
+                "running": self.running,
+                "moving": moving,
+                "move": {
+                    "active": moving,
+                    "reached": self._reached,
+                    "target_q": self._target_q,
+                    "last_qd": self._last_qd,
+                    "elapsed": elapsed,
+                },
+            }
 
 
 MASTER = MasterArmManager()

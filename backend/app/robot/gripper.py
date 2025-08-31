@@ -1,8 +1,12 @@
 # backend/app/robot/gripper.py
+import logging
 import threading, time
 from typing import Optional, Dict, Any, List
 import numpy as np
 import rby1_sdk as rby
+
+
+logger = logging.getLogger(__name__)
 
 
 class Gripper:
@@ -28,15 +32,26 @@ class Gripper:
 
     # ---- connect / disconnect ----
     def connect(self, verbose: bool = False) -> bool:
+        logger.info("Connecting to Gripper...")
+
         with self._lock:
             if self.connected:
                 return True
             
             try:
+                rby.upc.initialize_device(rby.upc.GripperDeviceName)
+            except Exception as e:
+                msg = f"Failed to initialize Gripper device: {e}"
+                logger.error(msg)
+                raise RuntimeError(msg)
+
+            try:
                 self.bus = rby.DynamixelBus(rby.upc.GripperDeviceName)
                 if not self.bus.open_port():
+                    logger.error("Failed to open port for Gripper.")
                     return False
                 if not self.bus.set_baud_rate(2_000_000):
+                    logger.error("Failed to set baud rate for Gripper.")
                     return False
                 self.bus.set_torque_constant([1, 1])
 
@@ -45,10 +60,10 @@ class Gripper:
                 for i in ids:
                     if not self.bus.ping(i):
                         if verbose:
-                            print(f"[Gripper] Dynamixel ID {i} is not active")
+                            logger.error(f"[Gripper] Dynamixel ID {i} is not active")
                         ok = False
                     elif verbose:
-                        print(f"[Gripper] Dynamixel ID {i} is active")
+                        logger.info(f"[Gripper] Dynamixel ID {i} is active")
                 if not ok:
                     try:
                         self.bus.close_port()
