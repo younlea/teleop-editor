@@ -4,10 +4,12 @@ import api from '@/lib/apiClient'
 
 export type BlendMode = 'override' | 'crossfade' | 'additive'
 export type BlendCurve = 'linear' | 'smoothstep' | 'easeInOut'
+export type TimeScalePoint = { t_ms: number, scale: number }
 
 export type Source = { id: string; dt: number; frames: number[][]; name?: string }
 export type Blend = { mode: BlendMode; inMs: number; outMs: number; curve: BlendCurve; weight: number; priority: number }
 export type Clip = { id: string; sourceId: string; t0: number; inFrame: number; outFrame: number; name?: string; blend: Blend }
+export type TimeScale = { enabled: boolean; points: TimeScalePoint[] }
 
 export type PlayerState = { t_ms: number; playing: boolean }
 
@@ -18,6 +20,7 @@ export type ProjectSnapshot = {
   sources: Record<string, Source>
   clips: Clip[]
   player: PlayerState
+  timescale: TimeScale
   jointNames: string[]
   endpoints?: {
     robotAddress?: string
@@ -30,6 +33,7 @@ export type ProjectState = {
   lengthMs: number
   sources: Record<string, Source>
   clips: Clip[]
+  timescale: TimeScale
   player: PlayerState
   jointNames: string[]
 
@@ -73,7 +77,6 @@ export type ProjectState = {
   _srv_poll_at_ms: number
 
   _undo: any[]
-  timescale: { enabled: boolean, points: Array<{ t_ms: number, scale: number }> }
 }
 
 export const useProjectStore = defineStore('project', {
@@ -224,6 +227,7 @@ export const useProjectStore = defineStore('project', {
         lengthMs: this.lengthMs,
         sources: this.sources,
         clips: this.clips,
+        timescale: this.timescale,
         player: this.player,
         jointNames: this.jointNames, // ★ 반드시 포함
         endpoints: { robotAddress: this.robotAddress, questAddress: this.questAddress }
@@ -234,6 +238,7 @@ export const useProjectStore = defineStore('project', {
       this.lengthMs = p.lengthMs ?? 0
       this.sources = p.sources ?? {}
       this.clips = p.clips ?? []
+      this.timescale = p.timescale ?? { enabled: true, points: [{ t_ms: 0, scale: 1 }] }
       this.player = p.player ?? { t_ms: 0, playing: false }
       // ★ jointNames 반영 누락 보정
       if (Array.isArray(p.jointNames) && p.jointNames.length > 0) {
@@ -588,7 +593,7 @@ export const useProjectStore = defineStore('project', {
       this.player.t_ms = Math.max(0, Math.round(ms))
     },
 
-    _ensurePlayPolling(intervalMs = 200) {
+    _ensurePlayPolling(intervalMs = 500) {
       if (this._playPollTimer) return
       const tick = async () => {
         try {
@@ -637,6 +642,7 @@ export const useProjectStore = defineStore('project', {
     async pause() {
       await api.play.stop()
       // 서버의 마지막 마커를 취해 로컬로 정착
+      console.log('pause()')
       try {
         const s = await api.play.state()
         this.player.playing = false
@@ -651,19 +657,6 @@ export const useProjectStore = defineStore('project', {
       this.player.playing = false
       this.player.t_ms = 0
       await this.seek(0)
-    },
-
-    /* ---------- Timescale ---------- */
-    async setTimescaleEnabled(enabled: boolean) {
-      this.timescale.enabled = !!enabled
-      await api.play.setTimescale({ enabled: this.timescale.enabled, points: this.timescale.points })
-    },
-    async setTimescalePoints(points: Array<{ t_ms: number, scale: number }>) {
-      // 정렬/정상화는 서버에서도 처리하지만, 프런트에서도 살짝 정리
-      const norm = (points ?? []).map(p => ({ t_ms: Math.max(0, Number(p.t_ms) || 0), scale: Number(p.scale) || 1 }))
-        .sort((a, b) => a.t_ms - b.t_ms)
-      this.timescale.points = norm.length ? norm : [{ t_ms: 0, scale: 1 }]
-      await api.play.setTimescale({ enabled: this.timescale.enabled, points: this.timescale.points })
     },
   }
 })

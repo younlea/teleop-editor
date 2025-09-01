@@ -53,7 +53,7 @@ class TeleopManager:
             raise RuntimeError("마스터암이 준비되어있지 않습니다.")
         if not MASTER.connected:
             raise RuntimeError("마스터암이 연결되어 있지 않습니다.")
-        if not MASTER.running:
+        if MASTER.running:
             raise RuntimeError("마스터암이 이미 실행 중 입니다.")
 
         self.position_mode = control_mode == "position"
@@ -476,10 +476,6 @@ class TeleopManager:
             except:
                 pass
 
-            # return MasterArm control input (modes/torque/pos)
-            if MASTER.zero_torque:
-                tgt_torque_l.fill(0)
-                tgt_torque_r.fill(0)
             cin = rby.upc.MasterArm.ControlInput()
             cin.target_operating_mode[0:7].fill(mode_r)
             cin.target_torque[0:7] = tgt_torque_r
@@ -491,7 +487,7 @@ class TeleopManager:
                 cin.target_position[7:14] = tgt_pos_l
             return cin
 
-        MASTER.start_control(loop)
+        MASTER.start_control(loop, keep_last_command=True)
         ROBOT.teleop_active = True
         self.running = True
 

@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Response, HTTPException, status
 from app.robot.robot import ROBOT
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/record", tags=["record"])
 
@@ -16,6 +19,7 @@ def record_start():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Recording already active"
         )
+    logger.info("레코딩을 시작합니다.")
     ok = ROBOT.start_recording()
     if not ok:
         raise HTTPException(

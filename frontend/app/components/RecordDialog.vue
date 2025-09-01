@@ -39,10 +39,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useProjectStore } from '@/stores/project'
 import { importCsv } from '@/lib/csvImport'
-import { useRecordingState } from '@/composable/useRecordingState'
-const { active, count, elapsed_ms } = useRecordingState()
+import { useRecordingStore } from '@/stores/recording'
+const recording = useRecordingStore()
+const { active, count, elapsed_ms } = storeToRefs(recording)
 
 /**
  * Props/Emits

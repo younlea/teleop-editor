@@ -2,6 +2,10 @@
 from fastapi import APIRouter, HTTPException, status, Response
 from pydantic import BaseModel, Field
 from app.robot.robot import ROBOT
+import logging
+from app.state import State
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/play", tags=["play"])
 
@@ -21,7 +25,9 @@ class TimescalePoint(BaseModel):
 
 class TimescaleSetReq(BaseModel):
     enabled: bool = True
-    points: list[TimescalePoint] = [TimescalePoint(t_ms=0, scale=1.0)]
+    points: list[TimescalePoint] = Field(
+        default_factory=lambda: [TimescalePoint(t_ms=0.0, scale=1.0)]
+    )
 
 
 class TimescaleGetRes(BaseModel):
@@ -47,26 +53,16 @@ def play_stop():
 
 @router.post("/seek", status_code=status.HTTP_204_NO_CONTENT)
 def play_seek(req: SeekReq):
-    if not ROBOT.seek(req.marker_ms):
+    t_timeline = float(req.marker_ms)
+    m_master = State.master_from_timeline_ms(t_timeline)
+    if not ROBOT.seek(m_master):
         raise HTTPException(status_code=400, detail="Seek failed")
     return Response(status_code=204)
 
 
 @router.get("/state")
 def play_state():
-    return ROBOT.play_state()  # 200 JSON
-
-
-@router.post("/timescale", status_code=status.HTTP_204_NO_CONTENT)
-def play_timescale_set(req: TimescaleSetReq):
-    ROBOT.set_timescale_enabled(req.enabled)
-    ROBOT.set_timescale_points([(p.t_ms, p.scale) for p in req.points])
-    return Response(status_code=204)
-
-
-@router.get("/timescale", response_model=TimescaleGetRes)
-def play_timescale_get():
-    return TimescaleGetRes(
-        enabled=ROBOT._warp_enabled,
-        points=[TimescalePoint(t_ms=t, scale=s) for (t, s) in ROBOT._warp_points],
-    )
+    st = ROBOT.play_state()
+    t_ms = State.timeline_from_master_ms(st["marker_ms"])
+    st_ui = {**st, "marker_ms": int(round(t_ms)), "domain": "timeline"}
+    return st_ui

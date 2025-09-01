@@ -6,12 +6,16 @@ from app.models import (
     Clip as PydClip,
     Source as PydSource,
     Blend as PydBlend,
+    TimeScale as PydTimeScale,
+    TimeScalePoint as PydTimeScalePoint,
 )
 from .types import (
     Project as RTProject,
     Clip as RTClip,
     Source as RTSource,
     Blend as RTBlend,
+    TimeScale as RTTimeScale,
+    TimeScalePoint as RTTimeScalePoint,
 )
 
 
@@ -48,7 +52,15 @@ def to_runtime(p: PydProject) -> RTProject:
             )
         )
 
-    return RTProject(lengthMs=int(p.lengthMs), sources=sources_rt, clips=clips_rt)
+    ts_points = []
+    for tsp in p.timescale.points:
+        ts_points.append(RTTimeScalePoint(t_ms=tsp.t_ms, scale=tsp.scale))
+
+    ts = RTTimeScale(enabled=p.timescale.enabled, points=ts_points)
+
+    return RTProject(
+        lengthMs=int(p.lengthMs), sources=sources_rt, clips=clips_rt, timescale=ts
+    )
 
 
 def from_runtime(p: RTProject) -> PydProject:
@@ -84,4 +96,11 @@ def from_runtime(p: RTProject) -> PydProject:
             )
         )
 
-    return PydProject(lengthMs=int(p.lengthMs), sources=sources_pd, clips=clips_pd)
+    ts_points_pd = []
+    for tsp in p.timescale.points:
+        ts_points_pd.append(PydTimeScalePoint(t_ms=tsp.t_ms, scale=tsp.scale))
+    ts_pd = PydTimeScale(enabled=p.timescale.enabled, points=ts_points_pd)
+
+    return PydProject(
+        lengthMs=int(p.lengthMs), sources=sources_pd, clips=clips_pd, timescale=ts_pd
+    )

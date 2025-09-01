@@ -84,7 +84,7 @@ import { useProjectStore } from '@/stores/project'
 import SourceCropDialog from '@/components/SourceCropDialog.vue'
 import RecordDialog from '@/components/RecordDialog.vue'
 import { importCsv } from '@/lib/csvImport'
-import { useRecordingState } from '@/composable/useRecordingState'
+import { useRecordingStore } from '@/stores/recording'
 import { downloadCsv, toCsv } from '~/lib/exportCsv'
 
 const store = useProjectStore()
@@ -116,7 +116,7 @@ async function onFileChange(e: Event) {
 }
 
 /* 녹화 토글(임시) */
-const { active: isRecording } = useRecordingState()
+const { active: isRecording } = useRecordingStore()
 const recordOpen = ref(false)
 function toggleRecording() { recordOpen.value = true }
 

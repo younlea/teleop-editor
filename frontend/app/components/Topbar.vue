@@ -104,6 +104,20 @@
           <option value="impedance">impedance</option>
         </select>
 
+        <!-- MasterArm move -->
+        <label class="lbl">MasterArm</label>
+        <div class="row mini">
+          <button class="btn" :class="{ info: masterConnected, disabled: !masterConnected || masterBusy }"
+            :disabled="!masterConnected || masterBusy" @click="onMoveToCurrent"
+            title="Move MasterArm to current timeline pose">
+            Move to current
+            <span v-if="masterBusy" class="spinner small"></span>
+          </button>
+          <span class="mono" :title="'Timeline cursor (ms)'">
+            {{ (s.player?.t_ms ?? s.project?.cursorMs ?? 0) }} ms
+          </span>
+        </div>
+
         <!-- MetaQuest IP -->
         <label class="lbl">MetaQuest</label>
         <div class="row mini">
@@ -131,6 +145,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from '@/stores/project'
+import api from '@/lib/apiClient'
 
 /* ---------------- store bindings ---------------- */
 const store = useProjectStore()
@@ -160,6 +175,7 @@ const teleopMode = computed({
   get: () => teleop.value.mode ?? 'position',
   set: (v: string) => { if (s.teleop) s.teleop.mode = v }
 })
+const moving = ref(false)
 
 /* ---------------- status & labels ---------------- */
 // Robot chips/classes
@@ -334,6 +350,44 @@ onUnmounted(() => {
   if (visHandler) document.removeEventListener('visibilitychange', visHandler)
   store.stopStatusPolling?.()
 })
+
+async function onMoveToCurrent() {
+  if (moving.value) return
+
+  const tRaw = s.player?.t_ms ?? 0
+  const t = Number(tRaw)
+
+  if (!Number.isFinite(t) || t < 0) {
+    s.notifyError?.('Invalid cursor', `Timeline cursor is invalid: ${tRaw}`)
+    return
+  }
+
+  const payload = {
+    t_ms: t,
+    minimum_duration: 2.0,
+    // 필요시 제한값 추가:
+    // max_vel: Array(14).fill(...),
+    // max_acc: Array(14).fill(...),
+    // max_jerk: Array(14).fill(...),
+  }
+
+  try {
+    moving.value = true
+    // apiClient 경유 (BASE_URL/에러 처리 통일)
+    await api.motion.moveToAtTimeline(payload)
+
+    // 성공 알림(선택)
+    // s.notifyInfo?.('Moving', `→ ${(t / 1000).toFixed(3)} s pose`)
+
+    // 상태 갱신
+    await s.refreshMaster?.()
+  } catch (e: any) {
+    console.error(e)
+    s.notifyError?.('Move failed', e?.message || 'Unable to move master to pose')
+  } finally {
+    moving.value = false
+  }
+}
 </script>
 
 <style scoped>

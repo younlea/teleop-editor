@@ -5,6 +5,45 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.motion.types import DOF
 
+_MIN_TS = 0.05
+_MAX_TS = 4.0
+
+
+class TimeScalePoint(BaseModel):
+    t_ms: float = Field(ge=0, description="키프레임 시간(ms, timeline 기준)")
+    scale: float = Field(gt=0, description="배속(>0)")
+
+
+class TimeScale(BaseModel):
+    enabled: bool = True
+    points: List[TimeScalePoint] = Field(
+        default_factory=lambda: [TimeScalePoint(t_ms=0.0, scale=1.0)],
+        description="오름차순 정렬된 (t_ms, scale) 키 목록",
+    )
+
+    @model_validator(mode="after")
+    def _normalize(self):
+        pts = self.points or [TimeScalePoint(t_ms=0.0, scale=1.0)]
+        # 1) 정규화/클램프
+        pts = [
+            TimeScalePoint(
+                t_ms=max(0.0, float(p.t_ms)),
+                scale=float(min(_MAX_TS, max(_MIN_TS, p.scale))),
+            )
+            for p in pts
+        ]
+        # 2) 시간 오름차순 정렬
+        pts.sort(key=lambda p: p.t_ms)
+        # 3) 같은 시각 키프레임 병합(마지막 값 우선)
+        merged: List[TimeScalePoint] = []
+        for p in pts:
+            if merged and abs(merged[-1].t_ms - p.t_ms) < 1e-9:
+                merged[-1] = p
+            else:
+                merged.append(p)
+        self.points = merged or [TimeScalePoint(t_ms=0.0, scale=1.0)]
+        return self
+
 
 # ---------- Core API Schemas ----------
 class Source(BaseModel):
@@ -56,12 +95,20 @@ class Clip(BaseModel):
         return self
 
 
+def _default_timescale() -> TimeScale:
+    return TimeScale()
+
+
 class Project(BaseModel):
     lengthMs: int = Field(0, ge=0, description="Project length (ms)")
     sources: Dict[str, Source] = Field(
         default_factory=dict, description="Sources by ID"
     )
     clips: List[Clip] = Field(default_factory=list, description="Clip list")
+    timescale: TimeScale = Field(
+        default_factory=_default_timescale,
+        description="Piecewise-linear timescale (timeline → master time)",
+    )
 
 
 # ---------- WS / API Payloads ----------

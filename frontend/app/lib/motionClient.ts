@@ -78,6 +78,7 @@ export class MotionClient {
 
     setProject(projectSnapshot: any) {
         this._lastProject = projectSnapshot
+        console.log(this._lastProject)
         this._send({ type: 'set_project', project: projectSnapshot })
     }
     seek(t_ms: number) {

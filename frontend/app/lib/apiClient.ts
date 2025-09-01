@@ -196,6 +196,13 @@ export const api = {
     motion: {
         exportCsv: (p: { t0_ms: number; t1_ms: number; step_ms: number; include_header?: boolean }) =>
             postJson<Blob>('/motion/export_csv', p),                                  // text/csv → blob
+        moveToAtTimeline: (p: {
+            t_ms: number
+            minimum_duration?: number
+            max_vel?: number[]
+            max_acc?: number[]
+            max_jerk?: number[]
+        }) => postJson('/motion/move_to_at_timeline', p),
     },
 
     /** Quest (UDP announce/listener) */

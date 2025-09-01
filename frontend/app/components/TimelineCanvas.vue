@@ -22,14 +22,15 @@
       <!-- Timescale controls -->
       <div class="ts-controls">
         <label class="lbl">Timescale</label>
-        <label class="switch" :title="ts.enabled ? '타임스케일 편집 활성화됨' : '타임스케일 비활성화'">
-          <input type="checkbox" :checked="ts.enabled" @change="onToggleTimescale(($event.target as HTMLInputElement).checked)" />
+        <label class="switch" :title="timescale.enabled ? '타임스케일 편집 활성화됨' : '타임스케일 비활성화'">
+          <input type="checkbox" :checked="timescale.enabled"
+            @change="onToggleTimescale(($event.target as HTMLInputElement).checked)" />
           <span class="slider"></span>
         </label>
         <div class="ts-pills">
-          <button class="pill" :class="{active: isUniform(0.5)}" @click="applyUniform(0.5)">0.5×</button>
-          <button class="pill" :class="{active: isUniform(1)}"   @click="applyUniform(1)">1×</button>
-          <button class="pill" :class="{active: isUniform(2)}"   @click="applyUniform(2)">2×</button>
+          <button class="pill" :class="{ active: isUniform(0.5) }" @click="applyUniform(0.5)">0.5×</button>
+          <button class="pill" :class="{ active: isUniform(1) }" @click="applyUniform(1)">1×</button>
+          <button class="pill" :class="{ active: isUniform(2) }" @click="applyUniform(2)">2×</button>
           <button class="pill ghost" title="키 모두 삭제" @click="clearTimescale()">Clear</button>
         </div>
         <div class="ts-readout" :title="'마커 시점 배속'">×{{ scaleAt(project.uiMarkerMs).toFixed(2) }}</div>
@@ -44,13 +45,13 @@
         <v-rect :config="{ x: 0, y: 0, width: stageWidth, height: totalTimelineHeight }" />
 
         <!-- ===== Speed Lane (Timescale) ===== -->
-        <template v-if="ts.enabled">
+        <template v-if="timescale.enabled">
           <!-- lane background -->
           <v-rect :config="{
             x: 0, y: tsLaneY, width: stageWidth, height: tsLaneH,
-            fillLinearGradientStartPoint: {x:0,y:tsLaneY},
-            fillLinearGradientEndPoint: {x:0,y:tsLaneY+tsLaneH},
-            fillLinearGradientColorStops: [0,'#233044', 1,'#1b2535']
+            fillLinearGradientStartPoint: { x: 0, y: tsLaneY },
+            fillLinearGradientEndPoint: { x: 0, y: tsLaneY + tsLaneH },
+            fillLinearGradientColorStops: [0, '#233044', 1, '#1b2535']
           }" />
           <!-- grid guide within lane -->
           <template v-for="g in tsGridY" :key="'tsgrid-'+g">
@@ -74,8 +75,8 @@
           <template v-for="(k, idx) in tsPointsDisplay" :key="'tsh-'+idx">
             <v-circle :config="{
               x: k.x + timelineOffsetPx, y: k.y,
-              radius: (tsHoverIndex===idx || tsDragIndex===idx) ? 5 : 4,
-              fill: (tsHoverIndex===idx || tsDragIndex===idx) ? '#ffffff' : '#cfeeff',
+              radius: (tsHoverIndex === idx || tsDragIndex === idx) ? 5 : 4,
+              fill: (tsHoverIndex === idx || tsDragIndex === idx) ? '#ffffff' : '#cfeeff',
               stroke: '#2a88c7', strokeWidth: 1.5
             }" />
           </template>
@@ -86,7 +87,7 @@
           }" />
           <v-text v-if="tsHoverInfo" :config="{
             x: tsHoverInfo.x + 12 + timelineOffsetPx, y: tsHoverInfo.y - 15,
-            text: `${(tsHoverInfo.t_ms/1000).toFixed(2)}s  ×${tsHoverInfo.scale.toFixed(2)}`,
+            text: `${(tsHoverInfo.t_ms / 1000).toFixed(2)}s  ×${tsHoverInfo.scale.toFixed(2)}`,
             fontSize: 11, fill: '#dff2ff'
           }" />
         </template>
@@ -143,7 +144,7 @@
           }" />
           <v-text :config="{
             x: clipX(clip) + timelineOffsetPx + 4,
-            y: timelineY + 52 + clip.track * rowH,
+            y: clipsTopY + clip.track * rowH,
             text: sources[clip.sourceId]?.name || clip.id,
             fontSize: 12, fill: '#0f1115'
           }" />
@@ -190,6 +191,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, reactive, watch, nextTick, h } from 'vue'
 import { useProjectStore, type Source } from '@/stores/project'
+import { useRecordingStore } from '@/stores/recording'
 import { storeToRefs } from 'pinia'
 import { MotionClient, throttle } from '@/lib/motionClient'
 import SourceCropDialog from '@/components/SourceCropDialog.vue'
@@ -212,7 +214,7 @@ const tsMin = 0.1, tsMax = 3.0
 const tsStepCoarse = 0.05, tsStepFine = 0.01
 
 const clipsTopY = computed(() =>
-   (ts.enabled ? tsLaneY + tsLaneH + tsLaneGap : timelineY + 50)
+  (timescale.value.enabled ? tsLaneY + tsLaneH + tsLaneGap : timelineY + 50)
 )
 
 /* ---------- 컨테이너 & 실제 폭 측정 ---------- */
@@ -234,7 +236,8 @@ function measureStageWidth() {
 
 /* ---------- 스토어 ---------- */
 const project = useProjectStore()
-const { clips, sources, lengthMs } = storeToRefs(project)
+const recording = useRecordingStore()
+const { clips, sources, lengthMs, timescale } = storeToRefs(project)
 const isRms = computed(() => project.graphJointMode === 'rms')
 
 /* ---------- Motion WS ---------- */
@@ -337,47 +340,37 @@ function genTicks() {
 }
 
 /* ---------- Motion push ---------- */
-const pushProject = throttle(() => motion?.setProject(project.toSnapshot()), 80)
+// const pushProject = throttle(() => motion?.setProject(project.toSnapshot()), 80)
 const pushSeek = throttle((ms: number) => motion?.seek(Math.round(ms)), 33) // ~30Hz
 
-watch([clips, sources, () => project.lengthMs], pushProject, { deep: true })
+// watch([clips, sources, timescale, () => project.lengthMs], pushProject, { deep: true })
 watch(markerMs, (ms) => pushSeek(ms))
+const isClipDragging = computed(() => !!activeClipId.value)
+const isTsDragging = computed(() => tsDragIndex.value !== null)
+
+const pushProject = throttle(() => {
+  if (isClipDragging.value || isTsDragging.value) return
+  motion?.setProject(project.toSnapshot())
+}, 120)
+
+watch([sources, () => project.lengthMs], pushProject, { deep: true })
 
 /* ---------- Timescale (UI + 서버 동기화) ---------- */
-type TsPoint = { t_ms: number, scale: number }
-const ts = reactive({
-  enabled: project.timescale?.enabled ?? true,
-  points: (project.timescale?.points as TsPoint[] | undefined) ?? [{ t_ms: 0, scale: 1 }],
-})
-// 서버 커밋 (쓰로틀)
-const commitTimescale = throttle(async () => {
-  try {
-    await project.setTimescaleEnabled(ts.enabled)
-    await project.setTimescalePoints(ts.points.slice())
-  } catch (e) {
-    console.warn('timescale commit failed', e)
-  }
-}, 150)
-// 초기 로드
-onMounted(async () => {
-  try {
-    const s = await api.play.getTimescale()
-    ts.enabled = !!s.enabled
-    ts.points = (s.points ?? [{ t_ms: 0, scale: 1 }]).map((p: any) => ({ t_ms: Number(p.t_ms)||0, scale: Number(p.scale)||1 }))
-  } catch {/* optional */}
-})
-watch(() => [ts.enabled, ts.points], () => { recomputeTsGeometry(); commitTimescale() }, { deep: true })
+watch(() => [timescale.value.enabled, timescale.value.points], () => { recomputeTsGeometry(); }, { deep: true })
 
-function onToggleTimescale(v: boolean) { ts.enabled = !!v }
+
+function onToggleTimescale(v: boolean) { timescale.value.enabled = !!v }
 function isUniform(val: number) {
-  return ts.points.length === 1 && Math.abs(ts.points[0]?.scale ?? 0 - val) < 1e-6 && ts.points[0]?.t_ms === 0
+  return timescale.value.points.length === 1 && Math.abs(timescale.value.points[0]?.scale ?? 0 - val) < 1e-6 && timescale.value.points[0]?.t_ms === 0
 }
 function applyUniform(val: number) {
-  ts.enabled = true
-  ts.points = [{ t_ms: 0, scale: clamp(val, tsMin, tsMax) }]
+  timescale.value.enabled = true
+  timescale.value.points = [{ t_ms: 0, scale: clamp(val, tsMin, tsMax) }]
+  console.log(timescale.value)
+  pushProject()
 }
 function clearTimescale() {
-  ts.points = [{ t_ms: 0, scale: 1 }]
+  timescale.value.points = [{ t_ms: 0, scale: 1 }]
 }
 function clamp(v: number, a: number, b: number) { return Math.min(b, Math.max(a, v)) }
 function snapScale(v: number, fine = false) {
@@ -385,7 +378,7 @@ function snapScale(v: number, fine = false) {
   return Math.round(v / step) * step
 }
 function scaleAt(t_ms: number): number {
-  const pts = ts.points
+  const pts = timescale.value.points
   if (!pts.length) return 1
   const t = Math.max(0, t_ms)
   let i = 0
@@ -401,10 +394,10 @@ function scaleAt(t_ms: number): number {
 /* ---------- Timescale lane geometry ---------- */
 const tsPolyline = ref<number[]>([])
 const tsAreaPolyline = ref<number[]>([])
-const tsPointsDisplay = ref<{x:number,y:number,t_ms:number,scale:number}[]>([])
+const tsPointsDisplay = ref<{ x: number, y: number, t_ms: number, scale: number }[]>([])
 const tsHoverIndex = ref<number | null>(null)
 const tsDragIndex = ref<number | null>(null)
-const tsHoverInfo = ref<{x:number,y:number,t_ms:number,scale:number} | null>(null)
+const tsHoverInfo = ref<{ x: number, y: number, t_ms: number, scale: number } | null>(null)
 const tsGridY = computed(() => {
   // lane 내 1.0x 레벨(중앙)과 0.5/2.0 레벨 가이드
   const levels = [0.5, 1.0, 2.0].map(s => scaleToY(s))
@@ -419,7 +412,7 @@ function yToScale(y: number) {
   return tsMin + v * (tsMax - tsMin)
 }
 function recomputeTsGeometry() {
-  const pts = ts.points.slice().sort((a,b) => a.t_ms - b.t_ms)
+  const pts = timescale.value.points.slice().sort((a, b) => a.t_ms - b.t_ms)
   // line points (extended to visible viewport)
   const startMs = Math.max(0, -timelineOffsetPx.value / pxPerMs.value)
   const endMs = startMs + stageWidth.value / pxPerMs.value
@@ -428,7 +421,7 @@ function recomputeTsGeometry() {
   xs.push(startMs)
   for (const p of pts) if (p.t_ms >= startMs && p.t_ms <= endMs) xs.push(p.t_ms)
   xs.push(endMs)
-  xs.sort((a,b)=>a-b)
+  xs.sort((a, b) => a - b)
   const poly: number[] = []
   for (const t of xs) {
     const x = msToPx(t) + timelineOffsetPx.value
@@ -445,7 +438,7 @@ function recomputeTsGeometry() {
     x: msToPx(p.t_ms), y: scaleToY(p.scale), t_ms: p.t_ms, scale: p.scale
   }))
 }
-watch([() => stageWidth.value, () => timelineOffsetPx.value, () => pxPerMs.value, () => ts.points, () => ts.enabled], recomputeTsGeometry, { deep: true })
+watch([() => stageWidth.value, () => timelineOffsetPx.value, () => pxPerMs.value, () => timescale.value.points, () => timescale.value.enabled], recomputeTsGeometry, { deep: true })
 
 /* ---------- 스냅 ---------- */
 const snapGuideXPx = ref<number | null>(null)
@@ -555,14 +548,14 @@ function onMouseDown(e: any) {
   lastPointerX = pos.x
 
   // Timescale lane interactions (consume early)
-  if (ts.enabled && pos.y >= tsLaneY && pos.y <= tsLaneY + tsLaneH) {
+  if (timescale.value.enabled && pos.y >= tsLaneY && pos.y <= tsLaneY + tsLaneH) {
     const localX = pos.x - timelineOffsetPx.value
     // 핸들 히트 테스트
     let hitIdx: number | null = null
-    for (let i=0;i<tsPointsDisplay.value.length;i++){
+    for (let i = 0; i < tsPointsDisplay.value.length; i++) {
       const h = tsPointsDisplay.value[i]
-      const dx = Math.abs(h?.x ?? 0 - localX)
-      const dy = Math.abs(h?.y ?? 0 - pos.y)
+      const dx = Math.abs((h?.x ?? 0) - localX)
+      const dy = Math.abs((h?.y ?? 0) - pos.y)
       if (dx <= 8 && dy <= 8) { hitIdx = i; break }
     }
     if (e.evt.button === 2) {
@@ -627,14 +620,14 @@ function onMouseMove(e: any) {
   if (!pos) return
 
   // Timescale hover/drag
-  if (ts.enabled) {
+  if (timescale.value.enabled) {
     if (pos.y >= tsLaneY && pos.y <= tsLaneY + tsLaneH) {
       // hover
       const localX = pos.x - timelineOffsetPx.value
       tsHoverIndex.value = null
-      for (let i=0;i<tsPointsDisplay.value.length;i++){
+      for (let i = 0; i < tsPointsDisplay.value.length; i++) {
         const h = tsPointsDisplay.value[i]
-        if (Math.abs(h?.x ?? 0 - localX) <= 8 && Math.abs(h?.y ?? 0 - pos.y) <= 8) { tsHoverIndex.value = i; break }
+        if (Math.abs((h?.x ?? 0) - localX) <= 8 && Math.abs((h?.y ?? 0) - pos.y) <= 8) { tsHoverIndex.value = i; break }
       }
       tsHoverInfo.value = { x: localX, y: pos.y, t_ms: Math.max(0, pxToMs(localX)), scale: scaleAt(pxToMs(localX)) }
       if (tsDragIndex.value !== null) {
@@ -645,19 +638,19 @@ function onMouseMove(e: any) {
         const rawScale = yToScale(pos.y)
         const s = snapScale(clamp(rawScale, tsMin, tsMax), fine)
         // 업데이트(정렬 보장)
-        const updated = ts.points.slice().sort((a,b)=>a.t_ms-b.t_ms)
+        const updated = timescale.value.points.slice().sort((a, b) => a.t_ms - b.t_ms)
         // idx는 정렬된 인덱스 기준이므로 그대로 사용
         updated[idx] = { t_ms, scale: s }
         // 이웃과 충돌 방지(겹치면 약간 벌리기)
         const eps = 0.5
-        if (idx>0 && updated[idx].t_ms <= (updated[idx-1]?.t_ms ?? -1)) updated[idx].t_ms = (updated[idx-1]?.t_ms ?? -1) + eps
-        if (idx<updated.length-1 && updated[idx].t_ms >= (updated[idx+1]?.t_ms ?? -1)) updated[idx].t_ms = (updated[idx+1]?.t_ms ?? -1) - eps
-        ts.points = updated.sort((a,b)=>a.t_ms-b.t_ms)
+        if (idx > 0 && updated[idx].t_ms <= (updated[idx - 1]?.t_ms ?? -1)) updated[idx].t_ms = (updated[idx - 1]?.t_ms ?? -1) + eps
+        if (idx < updated.length - 1 && updated[idx].t_ms >= (updated[idx + 1]?.t_ms ?? -1)) updated[idx].t_ms = (updated[idx + 1]?.t_ms ?? -1) - eps
+        timescale.value.points = updated.sort((a, b) => a.t_ms - b.t_ms)
         recomputeTsGeometry()
       }
-      setCursor(container, tsDragIndex.value!==null || tsHoverIndex.value!==null ? 'grab' : 'default')
+      setCursor(container, tsDragIndex.value !== null || tsHoverIndex.value !== null ? 'grab' : 'default')
       // 타임스케일 영역이면 기존 동작 막음
-      if (tsDragIndex.value!==null || tsHoverIndex.value!==null) return
+      if (tsDragIndex.value !== null || tsHoverIndex.value !== null) return
     } else {
       tsHoverIndex.value = null
       tsHoverInfo.value = null
@@ -715,6 +708,9 @@ function onMouseMove(e: any) {
 }
 
 function onMouseUp() {
+  const wasClipDragging = !!activeClipId.value
+  const wasTsDragging = tsDragIndex.value !== null
+
   if (tsDragIndex.value !== null) {
     tsDragIndex.value = null
   }
@@ -737,6 +733,8 @@ function onMouseUp() {
       project.seek(ms)
     }
   }
+
+  if (wasClipDragging || wasTsDragging) pushProject()
 }
 
 function onDblClick(e: any) {
@@ -778,10 +776,10 @@ function onContextMenu(e: any) {
   if (!pos) return
 
   // Timescale lane context menu 우선 처리
-  if (ts.enabled && pos.y >= tsLaneY && pos.y <= tsLaneY + tsLaneH) {
+  if (timescale.value.enabled && pos.y >= tsLaneY && pos.y <= tsLaneY + tsLaneH) {
     const localX = pos.x - timelineOffsetPx.value
     let hitIdx: number | null = null
-    for (let i=0;i<tsPointsDisplay.value.length;i++){
+    for (let i = 0; i < tsPointsDisplay.value.length; i++) {
       const h = tsPointsDisplay.value[i]
       if (Math.abs(h?.x ?? 0 - localX) <= 8 && Math.abs(h?.y ?? 0 - pos.y) <= 8) { hitIdx = i; break }
     }
@@ -844,20 +842,20 @@ function setCursor(container: HTMLElement, v: string) {
 
 /* ---------- Timescale helpers ---------- */
 function insertTsKey(t_ms: number, scale: number) {
-  const arr = ts.points.slice()
+  const arr = timescale.value.points.slice()
   arr.push({ t_ms, scale })
-  ts.points = arr.sort((a,b)=>a.t_ms-b.t_ms)
+  timescale.value.points = arr.sort((a, b) => a.t_ms - b.t_ms)
   recomputeTsGeometry()
 }
 function deleteTsKeyAt(index: number) {
-  const arr = ts.points.slice()
+  const arr = timescale.value.points.slice()
   // 1개만 남으면 삭제 대신 0:1 로 리셋
-  if (arr.length <= 1) { ts.points = [{ t_ms: 0, scale: 1 }]; return }
+  if (arr.length <= 1) { timescale.value.points = [{ t_ms: 0, scale: 1 }]; return }
   arr.splice(index, 1)
-  ts.points = arr
+  timescale.value.points = arr
   recomputeTsGeometry()
 }
-const tsCtx = reactive({ show:false, x:0, y:0, options: [] as CtxOption[], target: { idx: -1, x: 0 } })
+const tsCtx = reactive({ show: false, x: 0, y: 0, options: [] as CtxOption[], target: { idx: -1, x: 0 } })
 function openTsContextMenu(evt: MouseEvent, hitIdx: number | null, localX: number) {
   const t_ms = Math.max(0, pxToMs(localX))
   const opts: CtxOption[] = []
@@ -868,13 +866,13 @@ function openTsContextMenu(evt: MouseEvent, hitIdx: number | null, localX: numbe
   }
   opts.push({ label: '—', key: 'sep-1' } as any)
   opts.push({ label: '0.5×', key: 'ts-05' })
-  opts.push({ label: '1×',   key: 'ts-10' })
-  opts.push({ label: '2×',   key: 'ts-20' })
+  opts.push({ label: '1×', key: 'ts-10' })
+  opts.push({ label: '2×', key: 'ts-20' })
   opts.push({ label: 'Clear', key: 'ts-clear' })
   ctx.options = opts // 재사용 (Naive UI)
-   ctx.x = evt.clientX; ctx.y = evt.clientY; ctx.show = true
-   tsCtx.show = true; tsCtx.x = evt.clientX; tsCtx.y = evt.clientY; tsCtx.options = opts
-  ;(tsCtx as any).target = { idx: hitIdx ?? -1, x: localX, t_ms }
+  ctx.x = evt.clientX; ctx.y = evt.clientY; ctx.show = true
+  tsCtx.show = true; tsCtx.x = evt.clientX; tsCtx.y = evt.clientY; tsCtx.options = opts
+    ; (tsCtx as any).target = { idx: hitIdx ?? -1, x: localX, t_ms }
 }
 function onTsCtxSelect(key: string) {
   const tgt = (tsCtx as any).target as { idx: number, x: number, t_ms: number }
@@ -908,8 +906,8 @@ onMounted(async () => {
   window.addEventListener('keyup', (e) => { if (snap.enabled) snap.enabled = false })
   window.addEventListener('mouseup', onMouseUp)
   window.addEventListener('keydown', onKeydown)
-  // 드랍다운 선택 재사용 (타임스케일 ctx)
-  ;(ctx as any)._onSelectOrig = onCtxSelect
+    // 드랍다운 선택 재사용 (타임스케일 ctx)
+    ; (ctx as any)._onSelectOrig = onCtxSelect
 
   refreshViewClips()
   clampOffset()
@@ -925,6 +923,7 @@ onMounted(async () => {
 
     // 백엔드 플레이 상태 폴링 시작 (드리프트 보정에 필요)
     ; (project as any)._ensurePlayPolling?.()
+    ; (recording as any).start?.()
 })
 
 onBeforeUnmount(() => {
@@ -1024,7 +1023,7 @@ function sparkPointsForClip(clip: any): number[] {
 }
 
 /* ---------- 총 높이 ---------- */
-const totalTimelineHeight = computed(() => project.clips.length * rowHeight + 60)
+const totalTimelineHeight = computed(() => project.clips.length * rowHeight + 60 + (timescale.value.enabled ? rowHeight : 0))
 
 /* ---------- 키보드 핸들러 ---------- */
 function targetIsEditable(e: KeyboardEvent): boolean {
@@ -1065,7 +1064,7 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key !== 'Delete' && e.key !== 'Backspace') return
 
   // Timescale: Delete key deletes hovered handle
-  if ((e.key === 'Delete' || e.key === 'Backspace') && ts.enabled && tsHoverIndex.value !== null) {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && timescale.value.enabled && tsHoverIndex.value !== null) {
     deleteTsKeyAt(tsHoverIndex.value)
     e.preventDefault()
     return
@@ -1123,20 +1122,50 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .ts-controls {
- display: flex;
+  display: flex;
   align-items: center;
   gap: 10px;
 }
-.ts-pills { display:flex; gap:6px; }
-.ts-pills .pill {
-  font-size: 12px; padding: 4px 10px; border-radius: 999px;
-  background: var(--bg-3); color: var(--text-0); border: 1px solid var(--line-2);
-  transition: .15s; cursor: pointer;
+
+.ts-pills {
+  display: flex;
+  gap: 6px;
 }
-.ts-pills .pill:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.15) }
-.ts-pills .pill.active { background: var(--accent); color: white; border-color: var(--accent) }
-.ts-pills .pill.ghost { background: transparent; border-style: dashed; }
-.ts-readout { font-size: 12px; color: #9ac8ff; padding: 2px 6px; border:1px solid #2a88c7; border-radius: 6px; }
+
+.ts-pills .pill {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--text-0);
+  border: 1px solid var(--line-2);
+  transition: .15s;
+  cursor: pointer;
+}
+
+.ts-pills .pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .15)
+}
+
+.ts-pills .pill.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent)
+}
+
+.ts-pills .pill.ghost {
+  background: transparent;
+  border-style: dashed;
+}
+
+.ts-readout {
+  font-size: 12px;
+  color: #9ac8ff;
+  padding: 2px 6px;
+  border: 1px solid #2a88c7;
+  border-radius: 6px;
+}
 
 
 .lbl {

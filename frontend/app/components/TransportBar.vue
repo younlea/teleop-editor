@@ -64,7 +64,7 @@ async function exportCsv() {
   const step_ms = getDefaultStepMs()
 
   const url = `${store.backendUrl}/motion/export_csv`
-  const body = JSON.stringify({ t0_ms, t1_ms, step_ms, include_header: true })
+  const body = JSON.stringify({ t0_ms, step_ms, include_header: true })
 
   const res = await fetch(url, {
     method: 'POST',

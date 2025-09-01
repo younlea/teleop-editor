@@ -38,7 +38,26 @@ class Clip:
 
 
 @dataclass
+class TimeScalePoint:
+    t_ms: float  # timeline ms
+    scale: float  # scale (>0)
+
+
+@dataclass(frozen=True)
+class TimeScale:
+    enabled: bool
+    points: List[TimeScalePoint] = field(
+        default_factory=lambda: [TimeScalePoint(0.0, 1.0)]
+    )
+
+
+def _default_timescale() -> TimeScale:
+    return TimeScale()
+
+
+@dataclass
 class Project:
     lengthMs: int = 0
     sources: Dict[str, Source] = field(default_factory=dict)
     clips: List[Clip] = field(default_factory=list)
+    timescale: TimeScale = field(default_factory=_default_timescale)

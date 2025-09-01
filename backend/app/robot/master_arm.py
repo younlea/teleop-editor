@@ -59,7 +59,9 @@ class MasterArmManager:
             return False
 
         try:
-            model_path = f"{os.path.dirname(os.path.realpath(__file__))}/master_arm.urdf"
+            model_path = (
+                f"{os.path.dirname(os.path.realpath(__file__))}/master_arm.urdf"
+            )
             self.master = rby.upc.MasterArm(self.device)
             self.master.set_model_path(model_path)
             self.master.set_control_period(self.dt)
@@ -69,14 +71,14 @@ class MasterArmManager:
         except Exception as e:
             logger.error(f"Error connecting to Master Arm: {e}")
             return False
-        
+
         return self.connected
 
     def disconnect(self):
         if not self.connected:
             logger.debug("Master Arm is not connected. No need to disconnect.")
             return
-        
+
         logger.info("Disconnecting Master Arm...")
 
         try:
@@ -137,14 +139,12 @@ class MasterArmManager:
         self.master.start_control(ctrl_cb)
         self.running = True
 
-    def stop_control(self):
+    def stop_control(self) -> bool:
         logger.info("Stopping Master Arm control...")
 
         if not self.running:
-            logger.debug(
-                "Master Arm control is not running. No need to stop."
-            )
-            return
+            logger.debug("Master Arm control is not running. No need to stop.")
+            return False
 
         try:
             self._stop_evt.set()
@@ -156,6 +156,8 @@ class MasterArmManager:
             logger.error(f"Error while stopping Master Arm control: {e}")
         finally:
             self.running = False
+
+        return True
 
     def move_to_joints(
         self,
@@ -172,7 +174,7 @@ class MasterArmManager:
             raise ValueError(f"q_target must have length {self.DOF}")
         if self.running:
             raise RuntimeError(
-                "Already running. Stop first or integrate with your teleop multiplexer."
+                "Already running."
             )
 
         q_target = np.asarray(q_target, dtype=float)
@@ -223,7 +225,15 @@ class MasterArmManager:
                     return cin
 
             if not initialized:
-                q0 = np.asarray(state.q_joint, dtype=float)
+                q0 = np.asarray(
+                    np.where(
+                        state.operating_mode
+                        == rby.DynamixelBus.CurrentBasedPositionControlMode,
+                        state.target_position,
+                        state.q_joint,
+                    ),
+                    dtype=float,
+                )
                 dq0 = np.asarray(state.qvel_joint, dtype=float)
                 inp.current_position = q0.tolist()
                 inp.current_velocity = dq0.tolist()
