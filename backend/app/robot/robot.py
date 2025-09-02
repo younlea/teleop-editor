@@ -60,7 +60,7 @@ class RobotManager:
         self.tool_flange_12v: Dict[str, bool] = {}
 
         # DEBUG
-        self.is_simulation = True
+        self.is_simulation = False
 
         # ---- Recording ----
         self._rec_lock = threading.Lock()

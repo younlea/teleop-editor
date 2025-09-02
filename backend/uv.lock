@@ -57,7 +57,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "rby1-sdk", specifier = "==0.8.2" },
+    { name = "rby1-sdk", specifier = "==0.8.3" },
     { name = "ruckig", specifier = ">=0.15.3" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35.0" },
@@ -703,26 +703,26 @@ wheels = [
 
 [[package]]
 name = "rby1-sdk"
-version = "0.8.2"
+version = "0.8.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/84/8a585b34ff1c76b5da82c5b87a23100bc67543f8cfa543f69ae4498a5e3f/rby1_sdk-0.8.2.tar.gz", hash = "sha256:f48437267fd9adeda87964ee44e77608a5851f964a6fc4758b0397f81b63bc49", size = 98120627, upload-time = "2025-08-18T17:35:33.049Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/54/9442dec6d9e93e1691afe20144d254caa3dba06ffa0f47882d40f4bab2ba/rby1_sdk-0.8.3.tar.gz", hash = "sha256:b25eb76db557343682a7d8c571ec9659e7f90c863d9d7cc31e0b97836c6d490a", size = 98161742, upload-time = "2025-09-02T02:54:08.309Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/c5/5d77e16347bf693ecefc34122e7231261d0106c28568d8862ea6ae66bbb7/rby1_sdk-0.8.2-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:1ad8f7926f7f8c1b7c90746613e30c10caccdeebe3c0dafe8345c1f52e8ea918", size = 7812905, upload-time = "2025-08-18T17:34:53.542Z" },
-    { url = "https://files.pythonhosted.org/packages/f3/2c/60224c66bc73c43773666c58619ede5c6190844e8f2da70d76955e20ef12/rby1_sdk-0.8.2-cp310-cp310-manylinux_2_35_aarch64.whl", hash = "sha256:ee946aaa6621aa651b96ff20f3a2982f56248d6bf9ed93c385abb39fd7468cae", size = 10158177, upload-time = "2025-08-18T17:34:57Z" },
-    { url = "https://files.pythonhosted.org/packages/88/c4/0e0807b8a659d318d604b8080ade2c5cb66c7ace61cbdf9601540f410b82/rby1_sdk-0.8.2-cp310-cp310-manylinux_2_35_x86_64.whl", hash = "sha256:5b9a85eb8a4bc5093ee5d03e6f9167e8771e005228401a4f6e0c0fdcb5cc911e", size = 10094618, upload-time = "2025-08-18T17:35:00.367Z" },
-    { url = "https://files.pythonhosted.org/packages/a6/32/47a17624a05129d024e8a4f7be33c6569038becbd724ea36b166defd342c/rby1_sdk-0.8.2-cp310-cp310-win_amd64.whl", hash = "sha256:a599fc3085a82f0e98d9b2454111523c5acfeac8ede4c4be0c2b143cdca7b5b4", size = 6197042, upload-time = "2025-08-18T17:35:03.093Z" },
-    { url = "https://files.pythonhosted.org/packages/44/50/d6b7ed4ee53cb99b4ccfb2e8b6ddb8f49e2755a3a1cb1ff4fa471d3a5995/rby1_sdk-0.8.2-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:880c26a9d20bb2e3446a227badbf12159514b3920822e7df655b42b8abc4094d", size = 7814139, upload-time = "2025-08-18T17:35:06.087Z" },
-    { url = "https://files.pythonhosted.org/packages/d6/20/b164df4a497d0630ccdf89eaaef3a1c38ec0f1c7e430a4af9493e6e27bd2/rby1_sdk-0.8.2-cp311-cp311-manylinux_2_35_aarch64.whl", hash = "sha256:96ad05d4443f0395013f836003b1c71f44cd6d0ed5e81c814c097e6f39d844f5", size = 10152576, upload-time = "2025-08-18T17:35:08.01Z" },
-    { url = "https://files.pythonhosted.org/packages/12/b5/8f53474708eef80a04df7fd07e951c51cefbfaf1f727b93f80983e6eb0a0/rby1_sdk-0.8.2-cp311-cp311-manylinux_2_35_x86_64.whl", hash = "sha256:6109d136d630e46363b2c75a8c230a8fcc7ffd1f0ff3cdb47a518392c37c1ab8", size = 10093781, upload-time = "2025-08-18T17:35:11.686Z" },
-    { url = "https://files.pythonhosted.org/packages/09/1d/54adbd250cde1f4256401727447e0535f6cbf6bf3254de0eb5df38100c42/rby1_sdk-0.8.2-cp311-cp311-win_amd64.whl", hash = "sha256:d9b7a6159a3c9e45436b127e448e3c89a695d423231759cb19b832786258b2a7", size = 6198075, upload-time = "2025-08-18T17:35:15.17Z" },
-    { url = "https://files.pythonhosted.org/packages/46/a3/09f025450c2f2ab474e2ea623c02a8e2a12b3cd0157acc013f144aa8a7eb/rby1_sdk-0.8.2-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:b1de1be0a1899d34ad044573aee9d400b58f06e84096d60cf2903fb6fa9fc2a7", size = 7817479, upload-time = "2025-08-18T17:35:17.466Z" },
-    { url = "https://files.pythonhosted.org/packages/19/6b/630fe39a035e2a21cc587c44eeeaefdfb76a27013d92f74b7e438468f66c/rby1_sdk-0.8.2-cp312-cp312-manylinux_2_35_aarch64.whl", hash = "sha256:74d419474880344763125c37b397b60183e015825071ee737db2bb8f9d38bff5", size = 10141941, upload-time = "2025-08-18T17:35:19.962Z" },
-    { url = "https://files.pythonhosted.org/packages/81/34/a3affbc1b25cf6be2532f23d25bff937ce2a3c85232a9a58faec31aeef38/rby1_sdk-0.8.2-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:fb8c6503f6336cbb71f348c2095419d32e9dce9de83f32785a5e602793f7eaf9", size = 10081737, upload-time = "2025-08-18T17:35:22.672Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/7c/b3a93cd245981db3650814efbb1c93f509ec93a0d9ca72c57558ce9b411b/rby1_sdk-0.8.2-cp312-cp312-win_amd64.whl", hash = "sha256:2b955485efb342bdfe3c87f0b23a69b692c39524da459987925392c449f87a2d", size = 6203960, upload-time = "2025-08-18T17:35:24.93Z" },
+    { url = "https://files.pythonhosted.org/packages/84/b9/2858e1502c38fd8ab18f05e25c84ada455b23af3815ff71abe35c97d4b27/rby1_sdk-0.8.3-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:706ef6fbc56b30a9c8da4f8c72a56a5494801fd6d7db29a3ba9c51af4703401c", size = 8145022, upload-time = "2025-09-02T02:53:40.587Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/05/7e050cc64d4361357ab53ba58382da278b049559d893e0fd9ffa5e95af4f/rby1_sdk-0.8.3-cp310-cp310-manylinux_2_35_aarch64.whl", hash = "sha256:3a37844b6dcf9974cbe718ce73fe4894c95b20baeb7d2901a483a0b4e5a148cd", size = 10459555, upload-time = "2025-09-02T02:53:42.782Z" },
+    { url = "https://files.pythonhosted.org/packages/83/4f/eb2b761de4720d59b442ab2642049e9e50557a9b6b2cfbeeffa532e3f16e/rby1_sdk-0.8.3-cp310-cp310-manylinux_2_35_x86_64.whl", hash = "sha256:61ea5190fe922215f79123bb2ca7df074ab3c5a25cc0b828c5582a1a9bc27ed9", size = 10450823, upload-time = "2025-09-02T02:53:45.384Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/d4/6561b6660c2b84545c6a3480e0d4743238e7b9b0a74fe693c6808d919713/rby1_sdk-0.8.3-cp310-cp310-win_amd64.whl", hash = "sha256:9cd08c0024f71df2abaeca50528a1d13b928accc51ba040db8b92b1eee2bd85b", size = 6374000, upload-time = "2025-09-02T02:53:47.921Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/ef/c37e36636965f76fbe19a8164fe1acc8ae6e7e42c01420f827d07f57fc6a/rby1_sdk-0.8.3-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:e7a2736b74d4e924985b6b668b7895c70254e9e2a8b318c3929f09cbde5316c3", size = 8146714, upload-time = "2025-09-02T02:53:49.65Z" },
+    { url = "https://files.pythonhosted.org/packages/08/74/a816c94fbfbb45d5e76afdbee998326220162bb93e17354cce9c4681bd0f/rby1_sdk-0.8.3-cp311-cp311-manylinux_2_35_aarch64.whl", hash = "sha256:d50c23a0f130a0eca67a7de3498e4390b8d24dc027c7fb8f08793a2d0321c5ea", size = 10458889, upload-time = "2025-09-02T02:53:52.457Z" },
+    { url = "https://files.pythonhosted.org/packages/72/1e/06aec7459538cc9e87418355639b7f98c16a18774a4fb877436f695fdafb/rby1_sdk-0.8.3-cp311-cp311-manylinux_2_35_x86_64.whl", hash = "sha256:4ebcf055b1691a308680317b4c0cca5762a9dc97493690aa10909ed7757d516f", size = 10452545, upload-time = "2025-09-02T02:53:54.578Z" },
+    { url = "https://files.pythonhosted.org/packages/08/4d/ecfcbf47842e31d754e96a8d6f732212504aa0ef71ed99d7d18c1b31c6af/rby1_sdk-0.8.3-cp311-cp311-win_amd64.whl", hash = "sha256:86f749afd2d89081dbfac9eabb2f1fb7af16ff28371196e050ff7e2c789a0eab", size = 6375116, upload-time = "2025-09-02T02:53:56.562Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/07/0f61d610eca98341bc70aa9125d17532475758d454f3bddc569ae8e55d08/rby1_sdk-0.8.3-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:20addcb5cf4602c6a2f3a19a951f7ffddf975eaa10fc6542039d05e955c09850", size = 8153013, upload-time = "2025-09-02T02:53:58.75Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/b6/3fd00e632ff88ebe42d63620b045667af57f89e02be0bdc7073139ddc73a/rby1_sdk-0.8.3-cp312-cp312-manylinux_2_35_aarch64.whl", hash = "sha256:20697796c591e03ee86b373b7190d93d3efce21dae027ef7f079f3e6966fa9f9", size = 10452693, upload-time = "2025-09-02T02:54:00.517Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/ba/a8aea037d2e8d9b1c612a8de73fe996a608a79608496bfa07cb52d708b99/rby1_sdk-0.8.3-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:03c081ab5390895ae95d500d7e7e8bc92d6836dc93d9a264fbda89ad4a895ff4", size = 10454189, upload-time = "2025-09-02T02:54:02.631Z" },
+    { url = "https://files.pythonhosted.org/packages/14/0a/45ff72524b6f7631df31129626e6503162590a42b06fb2051fd2c7286d7f/rby1_sdk-0.8.3-cp312-cp312-win_amd64.whl", hash = "sha256:134aeed9a7bf7f8a832802a3597efbf1582dd1ec82a25545d67f324d22129eb2", size = 6381519, upload-time = "2025-09-02T02:54:04.592Z" },
 ]
 
 [[package]]
